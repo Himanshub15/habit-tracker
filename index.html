@@ -819,7 +819,7 @@ select.form-input {
   <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
 
   <aside class="sidebar" id="sidebar">
-    <div class="logo">
+    <div class="logo" onclick="switchView('garden')" style="cursor:pointer">
       <div class="logo-icon">🌱</div>
       <span class="logo-text">Bloomkeeper</span>
     </div>
@@ -859,7 +859,7 @@ select.form-input {
   <main class="main">
     <div class="mobile-header">
       <button class="hamburger" onclick="openSidebar()">☰</button>
-      <div class="logo">
+      <div class="logo" onclick="switchView('garden')" style="cursor:pointer">
         <div class="logo-icon">🌱</div>
         <span class="logo-text">Bloomkeeper</span>
       </div>
