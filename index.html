@@ -854,6 +854,57 @@ select.form-input {
 .plant-pot.grace .leaf-left, .plant-pot.grace .leaf-right { transform: rotate(15deg); }
 .plant-pot.grace { border-color: var(--accent-warm); }
 .grace-badge { font-size: 9px; color: var(--accent-warm); font-weight: 600; display: inline-block; margin-top: 2px; }
+
+/* ===== HABIT STACKING ===== */
+.stack-connector {
+  position: absolute; right: -14px; top: 50%;
+  width: 14px; height: 2px; border-top: 2px dashed var(--accent-glow);
+  z-index: 10; opacity: 0.5;
+}
+@keyframes stackGlow {
+  0% { box-shadow: 0 0 0 0 rgba(74, 223, 106, 0.4); }
+  70% { box-shadow: 0 0 0 12px rgba(74, 223, 106, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(74, 223, 106, 0); }
+}
+.plant-pot.stack-triggered { animation: stackGlow 1s ease; }
+.stack-label { font-size: 9px; color: var(--accent-sky); margin-top: 2px; }
+
+/* ===== DATA MANAGEMENT ===== */
+.data-section { margin-top: 10px; }
+.data-btn {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 10px; border-radius: 7px; cursor: pointer;
+  font-size: 12px; font-weight: 500; color: var(--text-secondary);
+  border: none; background: none; width: 100%; text-align: left;
+  font-family: var(--font-body); transition: all 0.15s ease;
+}
+.data-btn:hover { background: var(--bg-secondary); color: var(--text-primary); }
+.data-btn.danger:hover { color: var(--accent-coral); }
+
+/* ===== REVIEWS ===== */
+.review-card {
+  background: var(--bg-card); border: 1px solid var(--border);
+  border-radius: 14px; padding: 22px; margin-bottom: 14px;
+}
+.review-card h3 { font-family: var(--font-display); font-size: 16px; margin-bottom: 4px; }
+.review-card .review-date { font-size: 12px; color: var(--text-muted); margin-bottom: 14px; }
+.review-stats-row { display: flex; gap: 14px; margin-bottom: 14px; flex-wrap: wrap; }
+.review-stat-mini {
+  background: var(--bg-secondary); border-radius: 8px; padding: 8px 14px;
+  text-align: center; flex: 1; min-width: 80px;
+}
+.review-stat-mini .val { font-family: var(--font-display); font-size: 18px; font-weight: 700; }
+.review-stat-mini .lbl { font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+.review-note { margin-top: 10px; }
+.review-note h4 { font-size: 12px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; }
+.review-note p { font-size: 13px; color: var(--text-secondary); line-height: 1.6; font-style: italic; }
+.review-banner {
+  background: var(--bg-card); border: 1px solid var(--accent-warm);
+  border-radius: 10px; padding: 12px 18px; margin-bottom: 18px;
+  display: flex; align-items: center; justify-content: space-between; cursor: pointer;
+}
+.review-banner:hover { background: var(--bg-card-hover); }
+.review-banner span { font-size: 13px; color: var(--accent-warm); font-weight: 500; }
 </style>
 </head>
 
@@ -884,11 +935,22 @@ select.form-input {
       <div class="nav-item" data-view="dashboard" onclick="switchView('dashboard')">
         <span class="nav-icon">📈</span> Dashboard
       </div>
+      <div class="nav-item" data-view="reviews" onclick="switchView('reviews')">
+        <span class="nav-icon">📝</span> Reviews
+      </div>
     </div>
 
     <div class="nav-section">
       <div class="nav-label">Categories</div>
       <div id="sidebarCategories"></div>
+    </div>
+
+    <div class="nav-section data-section">
+      <div class="nav-label">Data</div>
+      <button class="data-btn" onclick="exportData()"><span style="width:22px;text-align:center">📥</span> Export Data</button>
+      <button class="data-btn" onclick="document.getElementById('importFile').click()"><span style="width:22px;text-align:center">📤</span> Import Data</button>
+      <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
+      <button class="data-btn danger" onclick="resetAllData()"><span style="width:22px;text-align:center">🗑</span> Reset All</button>
     </div>
 
     <div class="sidebar-footer">
@@ -972,6 +1034,18 @@ select.form-input {
       <div class="stats-bar" id="dashStats"></div>
       <div class="dashboard-grid" id="dashboardGrid"></div>
     </div>
+
+    <!-- Reviews View -->
+    <div class="view" id="reviewsView">
+      <div class="page-header">
+        <div>
+          <h1 class="page-title">Weekly Reviews</h1>
+          <p class="page-subtitle">Reflect on your growth</p>
+        </div>
+        <button class="btn btn-primary" onclick="openReviewModal()">+ Write Review</button>
+      </div>
+      <div id="reviewsList"></div>
+    </div>
   </main>
 </div>
 
@@ -1044,6 +1118,12 @@ select.form-input {
         <label class="form-label">Select Days</label>
         <div class="days-picker" id="daysPicker"></div>
       </div>
+      <div class="form-group">
+        <label class="form-label">After Completing (Stack)</label>
+        <select class="form-input" id="habitAfterHabit">
+          <option value="">None (standalone)</option>
+        </select>
+      </div>
       <div class="form-row">
         <div class="form-group">
           <label class="form-label">Streak Goal (days)</label>
@@ -1070,6 +1150,31 @@ select.form-input {
       <button class="modal-close" onclick="closeModal('detailModal')">&times;</button>
     </div>
     <div class="modal-body" id="detailBody"></div>
+  </div>
+</div>
+
+<!-- Review Modal -->
+<div class="modal-overlay" id="reviewModal">
+  <div class="modal">
+    <div class="modal-header">
+      <h2>Weekly Review</h2>
+      <button class="modal-close" onclick="closeModal('reviewModal')">&times;</button>
+    </div>
+    <div class="modal-body">
+      <div id="reviewStats"></div>
+      <div class="form-group">
+        <label class="form-label">What went well?</label>
+        <textarea class="form-input" id="reviewWentWell" rows="3" placeholder="Wins, progress, good days..."></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">What got in the way?</label>
+        <textarea class="form-input" id="reviewGotInWay" rows="3" placeholder="Obstacles, missed days, challenges..."></textarea>
+      </div>
+      <div class="form-actions">
+        <button class="btn" onclick="closeModal('reviewModal')">Cancel</button>
+        <button class="btn btn-primary" onclick="saveReview()">Save Review</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1377,6 +1482,49 @@ function renderPlant(habit, streak, ds) {
   return { html, isWilted };
 }
 
+// ===== HABIT STACKING =====
+function populateAfterHabitDropdown(excludeId) {
+  const sel = document.getElementById('habitAfterHabit');
+  sel.innerHTML = '<option value="">None (standalone)</option>';
+  for (const h of habits) {
+    if (h.id === excludeId) continue;
+    sel.innerHTML += `<option value="${h.id}">${h.emoji} ${h.name}</option>`;
+  }
+}
+
+function getOrderedHabits() {
+  const ordered = [];
+  const placed = new Set();
+  function addChain(id) {
+    if (placed.has(id)) return;
+    placed.add(id);
+    const h = habits.find(x => x.id === id);
+    if (h) ordered.push(h);
+    const followers = habits.filter(x => x.afterHabit === id);
+    for (const f of followers) addChain(f.id);
+  }
+  for (const h of habits) {
+    if (!h.afterHabit) addChain(h.id);
+  }
+  for (const h of habits) {
+    if (!placed.has(h.id)) { placed.add(h.id); ordered.push(h); }
+  }
+  return ordered;
+}
+
+function triggerStackGlow(completedId) {
+  const follower = habits.find(h => h.afterHabit === completedId);
+  if (!follower) return;
+  setTimeout(() => {
+    document.querySelectorAll('.plant-pot').forEach(pot => {
+      if (pot.querySelector('.plant-name')?.textContent === follower.name) {
+        pot.classList.add('stack-triggered');
+        setTimeout(() => pot.classList.remove('stack-triggered'), 1000);
+      }
+    });
+  }, 100);
+}
+
 // ===== GARDEN =====
 function renderGarden() {
   const ds = today();
@@ -1408,6 +1556,16 @@ function renderGarden() {
       <p class="progress-motivation">"${mot}"</p>
     </div>`;
 
+  // Weekly review banner (Saturday/Sunday)
+  const reviews = getReviews();
+  const currentWeek = getWeekKey();
+  const dayOfWeek = new Date().getDay();
+  if ((dayOfWeek === 0 || dayOfWeek === 6) && !reviews[currentWeek]) {
+    document.getElementById('dailyProgress').insertAdjacentHTML('afterend',
+      `<div class="review-banner" onclick="switchView('reviews');setTimeout(openReviewModal,100)">
+        <span>📝 Time for your weekly review</span><span>→</span></div>`);
+  }
+
   // Stats
   const allStreaks = habits.map(h => getStreak(h.id).count);
   const bestStreak = allStreaks.length ? Math.max(...allStreaks) : 0;
@@ -1430,8 +1588,10 @@ function renderGarden() {
     return;
   }
 
+  const orderedHabits = getOrderedHabits();
   let html = '';
-  for (const habit of habits) {
+  for (let idx = 0; idx < orderedHabits.length; idx++) {
+    const habit = orderedHabits[idx];
     const streakData = getStreak(habit.id);
     const streak = streakData.count;
     const graceActive = streakData.graceActive;
@@ -1450,16 +1610,25 @@ function renderGarden() {
     const isPaused = habit.paused;
     const graceClass = graceActive ? 'grace' : '';
     const graceBadge = graceActive ? '<div class="grace-badge">1 skip used</div>' : '';
+
+    const nextInStack = orderedHabits[idx + 1];
+    const hasFollower = nextInStack && nextInStack.afterHabit === habit.id;
+    const isFollower = habit.afterHabit;
+    const connectorHtml = hasFollower ? '<div class="stack-connector"></div>' : '';
+    const stackLabel = isFollower ? `<div class="stack-label">after ${habits.find(h => h.id === habit.afterHabit)?.emoji || ''}</div>` : '';
+
     html += `<div class="plant-pot ${done ? 'completed' : ''} ${isWilted ? 'wilted' : ''} ${isPaused ? 'paused' : ''} ${graceClass}"
       onclick="${isPaused ? `showDetail('${habit.id}')` : `toggleHabitToday('${habit.id}')`}" ondblclick="showDetail('${habit.id}')">
       <div class="plant-visual">${ph}</div>
       <div class="plant-name">${habit.name}</div>
+      ${stackLabel}
       ${isPaused
         ? `<div class="plant-streak"><span class="pause-badge">Paused</span></div>`
         : `<div class="plant-streak">${streak > 0 ? `<strong>${streak}</strong> day streak` : due ? 'Tap to water' : 'Rest day'}</div>${graceBadge}`}
       ${completionDisplay}
       ${time ? `<div class="plant-time">${time}</div>` : ''}
       <div class="plant-category" style="color:${CAT_COLORS[habit.category] || CAT_COLORS.custom}">${habit.category}</div>
+      ${connectorHtml}
     </div>`;
   }
   html += `<div class="plant-pot add-new" onclick="openCreateModal()">
@@ -1476,6 +1645,7 @@ function toggleHabitToday(id) {
 
   if (type === 'binary') {
     toggleCompletion(id, today());
+    triggerStackGlow(id);
     renderGarden();
     return;
   }
@@ -1527,6 +1697,7 @@ function submitQuickEntry(id, ratingValue) {
     else if (completions[ds][id]) delete completions[ds][id];
   }
   save();
+  triggerStackGlow(id);
   if (activeQuickEntry) { activeQuickEntry.remove(); activeQuickEntry = null; }
   renderGarden();
 }
@@ -1807,6 +1978,8 @@ function editHabit(id) {
   document.getElementById('habitCompletionType').value = h.completionType || 'binary';
   document.getElementById('habitTarget').value = h.target || '';
   toggleTargetInput();
+  populateAfterHabitDropdown(id);
+  document.getElementById('habitAfterHabit').value = h.afterHabit || '';
   document.getElementById('createModal').classList.add('show');
 }
 
@@ -1828,6 +2001,8 @@ function openCreateModal() {
   document.getElementById('habitCompletionType').value = 'binary';
   document.getElementById('habitTarget').value = '';
   toggleTargetInput();
+  populateAfterHabitDropdown(null);
+  document.getElementById('habitAfterHabit').value = '';
   document.getElementById('createModal').classList.add('show');
   setTimeout(() => document.getElementById('habitName').focus(), 150);
 }
@@ -1859,13 +2034,174 @@ function saveHabit() {
     document.querySelectorAll('#daysPicker .day-btn.selected').forEach(el => customDays.push(parseInt(el.dataset.day)));
     if (!customDays.length) customDays = [0,1,2,3,4,5,6];
   }
+  const afterHabit = document.getElementById('habitAfterHabit').value || null;
+  // Circular chain validation
+  if (afterHabit) {
+    let check = afterHabit;
+    const visited = new Set([editingHabitId || 'new']);
+    while (check) {
+      if (visited.has(check)) { alert('Circular habit chain detected!'); return; }
+      visited.add(check);
+      const parent = habits.find(h => h.id === check);
+      check = parent?.afterHabit;
+    }
+  }
   if (editingHabitId) {
     const h = habits.find(x => x.id === editingHabitId);
-    if (h) Object.assign(h, { name, emoji, color, category, timeOfDay, frequency, customDays, goal, duration, completionType, target });
+    if (h) Object.assign(h, { name, emoji, color, category, timeOfDay, frequency, customDays, goal, duration, completionType, target, afterHabit });
   } else {
-    habits.push({ id: genId(), name, emoji, color, category, timeOfDay, frequency, customDays, goal, duration, completionType, target, created: today() });
+    habits.push({ id: genId(), name, emoji, color, category, timeOfDay, frequency, customDays, goal, duration, completionType, target, afterHabit, created: today() });
   }
   save(); closeModal('createModal'); renderAll();
+}
+
+// ===== DATA EXPORT/IMPORT =====
+function exportData() {
+  const data = {
+    version: 2,
+    exportedAt: new Date().toISOString(),
+    habits: habits,
+    completions: completions,
+    reviews: JSON.parse(localStorage.getItem('bk_reviews') || '{}')
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `bloomkeeper-backup-${today()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importData(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const data = JSON.parse(e.target.result);
+      if (!data.version || !data.habits) { alert('Invalid backup file.'); return; }
+      if (!confirm('This will replace all current data. Continue?')) return;
+      habits = data.habits;
+      completions = data.completions || {};
+      save();
+      if (data.reviews) localStorage.setItem('bk_reviews', JSON.stringify(data.reviews));
+      renderAll();
+      alert('Data imported successfully!');
+    } catch (err) { alert('Error reading file: ' + err.message); }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+function resetAllData() {
+  if (!confirm('This will permanently delete all habits, completions, and reviews. Are you sure?')) return;
+  if (!confirm('Really? This cannot be undone.')) return;
+  localStorage.removeItem('bk_habits');
+  localStorage.removeItem('bk_completions');
+  localStorage.removeItem('bk_reviews');
+  localStorage.removeItem('bk_seeded');
+  habits = []; completions = {};
+  renderAll();
+}
+
+// ===== WEEKLY REVIEWS =====
+function getWeekKey(d) {
+  const dt = new Date(d || new Date());
+  const oneJan = new Date(dt.getFullYear(), 0, 1);
+  const weekNum = Math.ceil(((dt - oneJan) / 86400000 + oneJan.getDay() + 1) / 7);
+  return `${dt.getFullYear()}-W${String(weekNum).padStart(2, '0')}`;
+}
+
+function getReviews() {
+  try { return JSON.parse(localStorage.getItem('bk_reviews') || '{}'); } catch { return {}; }
+}
+
+function saveReviews(reviews) {
+  localStorage.setItem('bk_reviews', JSON.stringify(reviews));
+}
+
+function getWeekStats() {
+  const now = new Date();
+  let totalDue = 0, totalDone = 0;
+  const habitStats = [];
+  for (const h of habits) {
+    if (h.paused) continue;
+    let due = 0, done = 0;
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(now); d.setDate(d.getDate() - i);
+      if (isDueOn(h, d)) { due++; if (isCompleted(h.id, dateStr(d))) done++; }
+    }
+    totalDue += due; totalDone += done;
+    habitStats.push({ name: h.name, emoji: h.emoji, due, done, rate: due > 0 ? Math.round((done / due) * 100) : 0 });
+  }
+  habitStats.sort((a, b) => b.rate - a.rate);
+  return {
+    totalDue, totalDone,
+    pct: totalDue > 0 ? Math.round((totalDone / totalDue) * 100) : 0,
+    best: habitStats[0] || null,
+    worst: habitStats[habitStats.length - 1] || null
+  };
+}
+
+function openReviewModal() {
+  const stats = getWeekStats();
+  document.getElementById('reviewStats').innerHTML = `
+    <div class="review-stats-row">
+      <div class="review-stat-mini"><div class="val">${stats.pct}%</div><div class="lbl">Completion</div></div>
+      <div class="review-stat-mini"><div class="val">${stats.totalDone}/${stats.totalDue}</div><div class="lbl">Check-ins</div></div>
+      <div class="review-stat-mini"><div class="val">${stats.best ? stats.best.emoji : '-'}</div><div class="lbl">Best</div></div>
+      <div class="review-stat-mini"><div class="val">${stats.worst ? stats.worst.emoji : '-'}</div><div class="lbl">Needs Work</div></div>
+    </div>`;
+  const reviews = getReviews();
+  const weekKey = getWeekKey();
+  const existing = reviews[weekKey];
+  document.getElementById('reviewWentWell').value = existing?.wentWell || '';
+  document.getElementById('reviewGotInWay').value = existing?.gotInWay || '';
+  document.getElementById('reviewModal').classList.add('show');
+}
+
+function saveReview() {
+  const reviews = getReviews();
+  const weekKey = getWeekKey();
+  const stats = getWeekStats();
+  reviews[weekKey] = {
+    completedAt: new Date().toISOString(),
+    stats: { totalDue: stats.totalDue, totalDone: stats.totalDone, pct: stats.pct,
+             bestHabit: stats.best?.name, worstHabit: stats.worst?.name },
+    wentWell: document.getElementById('reviewWentWell').value.trim(),
+    gotInWay: document.getElementById('reviewGotInWay').value.trim()
+  };
+  saveReviews(reviews);
+  closeModal('reviewModal');
+  if (document.getElementById('reviewsView').classList.contains('active')) renderReviews();
+}
+
+function renderReviews() {
+  const reviews = getReviews();
+  const keys = Object.keys(reviews).sort().reverse();
+  if (keys.length === 0) {
+    document.getElementById('reviewsList').innerHTML = `
+      <div class="empty-state"><div class="empty-icon">📝</div>
+      <h3>No reviews yet</h3><p>Write your first weekly review to start tracking your reflections.</p>
+      <button class="btn btn-primary" onclick="openReviewModal()">+ Write Review</button></div>`;
+    return;
+  }
+  let html = '';
+  for (const key of keys) {
+    const r = reviews[key];
+    html += `<div class="review-card">
+      <h3>${key}</h3>
+      <div class="review-date">${new Date(r.completedAt).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</div>
+      <div class="review-stats-row">
+        <div class="review-stat-mini"><div class="val">${r.stats.pct}%</div><div class="lbl">Completion</div></div>
+        <div class="review-stat-mini"><div class="val">${r.stats.totalDone}/${r.stats.totalDue}</div><div class="lbl">Check-ins</div></div>
+      </div>
+      ${r.wentWell ? `<div class="review-note"><h4>What went well</h4><p>${r.wentWell}</p></div>` : ''}
+      ${r.gotInWay ? `<div class="review-note"><h4>What got in the way</h4><p>${r.gotInWay}</p></div>` : ''}
+    </div>`;
+  }
+  document.getElementById('reviewsList').innerHTML = html;
 }
 
 // ===== SIDEBAR =====
@@ -1895,6 +2231,7 @@ function switchView(view) {
   else if (view === 'monthly') renderMonthly();
   else if (view === 'year') renderYear();
   else if (view === 'dashboard') renderDashboard();
+  else if (view === 'reviews') renderReviews();
 }
 
 // ===== THEME =====
@@ -1938,7 +2275,7 @@ function formatDate(d) {
   return `${days[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
 }
 
-function renderAll() { renderGarden(); renderWeekly(); renderMonthly(); renderYear(); renderDashboard(); renderSidebarCategories(); }
+function renderAll() { renderGarden(); renderWeekly(); renderMonthly(); renderYear(); renderDashboard(); renderReviews(); renderSidebarCategories(); }
 
 // ===== BOOT =====
 load();
@@ -1952,6 +2289,7 @@ renderAll();
 document.querySelectorAll('.modal-overlay').forEach(o => {
   o.addEventListener('click', e => { if (e.target === o) o.classList.remove('show'); });
 });
+// reviewModal is included in the .modal-overlay query above
 </script>
 </body>
 </html>
