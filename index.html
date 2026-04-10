@@ -843,6 +843,12 @@ select.form-input {
 }
 .rating-star.active { opacity: 1; }
 .rating-star:hover { opacity: 0.7; }
+
+/* ===== PAUSED STATE ===== */
+.plant-pot.paused { opacity: 0.4; filter: grayscale(0.5); }
+.plant-pot.paused::after { content: '⏸'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 28px; z-index: 10; }
+.plant-pot.paused .plant-visual { opacity: 0.5; }
+.pause-badge { font-size: 9px; color: var(--accent-warm); font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 3px; }
 </style>
 </head>
 
@@ -1342,7 +1348,7 @@ function renderPlant(habit, streak, ds) {
 // ===== GARDEN =====
 function renderGarden() {
   const ds = today();
-  const dueHabits = habits.filter(h => isDueOn(h, new Date()));
+  const dueHabits = habits.filter(h => !h.paused && isDueOn(h, new Date()));
   const totalDue = dueHabits.length;
   const totalDone = dueHabits.filter(h => isCompleted(h.id, ds)).length;
   const pct = totalDue === 0 ? 0 : Math.round((totalDone / totalDue) * 100);
@@ -1408,11 +1414,14 @@ function renderGarden() {
     else if (cType === 'duration' && cValue > 0) completionDisplay = `<div class="completion-type-badge">${cValue} min${cTarget ? ' / ' + cTarget : ''}</div>`;
     else if (cType === 'rating' && cValue > 0) completionDisplay = `<div class="completion-type-badge">${'★'.repeat(cValue)}${'☆'.repeat(5 - cValue)}</div>`;
 
-    html += `<div class="plant-pot ${done ? 'completed' : ''} ${isWilted ? 'wilted' : ''}"
-      onclick="toggleHabitToday('${habit.id}')" ondblclick="showDetail('${habit.id}')">
+    const isPaused = habit.paused;
+    html += `<div class="plant-pot ${done ? 'completed' : ''} ${isWilted ? 'wilted' : ''} ${isPaused ? 'paused' : ''}"
+      onclick="${isPaused ? `showDetail('${habit.id}')` : `toggleHabitToday('${habit.id}')`}" ondblclick="showDetail('${habit.id}')">
       <div class="plant-visual">${ph}</div>
       <div class="plant-name">${habit.name}</div>
-      <div class="plant-streak">${streak > 0 ? `<strong>${streak}</strong> day streak` : due ? 'Tap to water' : 'Rest day'}</div>
+      ${isPaused
+        ? `<div class="plant-streak"><span class="pause-badge">Paused</span></div>`
+        : `<div class="plant-streak">${streak > 0 ? `<strong>${streak}</strong> day streak` : due ? 'Tap to water' : 'Rest day'}</div>`}
       ${completionDisplay}
       ${time ? `<div class="plant-time">${time}</div>` : ''}
       <div class="plant-category" style="color:${CAT_COLORS[habit.category] || CAT_COLORS.custom}">${habit.category}</div>
@@ -1507,7 +1516,7 @@ function renderWeekly() {
   }
   html += '</div>';
 
-  for (const h of habits) {
+  for (const h of habits.filter(h => !h.paused)) {
     html += '<div class="weekly-row">';
     html += `<div class="weekly-habit-name"><span>${h.emoji}</span> ${h.name}</div>`;
     for (let i = 0; i < 7; i++) {
@@ -1716,9 +1725,22 @@ function showDetail(id) {
     <div class="detail-actions">
       <button class="btn" onclick="editHabit('${id}')">Edit</button>
       <button class="btn btn-danger" onclick="deleteHabit('${id}')">Delete</button>
+      <button class="btn" onclick="togglePause('${id}')" style="color:${h.paused ? 'var(--accent-glow)' : 'var(--accent-warm)'}">
+        ${h.paused ? '▶ Resume' : '⏸ Pause'}
+      </button>
       <button class="btn" onclick="closeModal('detailModal')" style="margin-left:auto">Close</button>
     </div>`;
   document.getElementById('detailModal').classList.add('show');
+}
+
+function togglePause(id) {
+  const h = habits.find(x => x.id === id);
+  if (!h) return;
+  h.paused = !h.paused;
+  h.pausedAt = h.paused ? today() : null;
+  save();
+  closeModal('detailModal');
+  renderAll();
 }
 
 function deleteHabit(id) {
@@ -1814,7 +1836,7 @@ function saveHabit() {
 // ===== SIDEBAR =====
 function renderSidebarCategories() {
   const cats = {};
-  for (const h of habits) { if (!cats[h.category]) cats[h.category] = 0; cats[h.category]++; }
+  for (const h of habits.filter(h => !h.paused)) { if (!cats[h.category]) cats[h.category] = 0; cats[h.category]++; }
   let html = '';
   for (const cat in cats) {
     const color = CAT_COLORS[cat] || CAT_COLORS.custom;
