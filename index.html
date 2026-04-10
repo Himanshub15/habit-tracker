@@ -1328,6 +1328,7 @@ function seedDemoData() {
 
 // ===== HELPERS =====
 function today() { return new Date().toISOString().split('T')[0]; }
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 function dateStr(d) { return d.toISOString().split('T')[0]; }
 function genId() { return 'h_' + Date.now().toString(36) + Math.random().toString(36).substr(2, 4); }
 
@@ -1373,22 +1374,17 @@ function getStreak(id) {
     const ds = dateStr(d);
     if (isCompleted(id, ds)) {
       streak++;
-      if (graceUsed) daysSinceGrace++;
       d.setDate(d.getDate() - 1);
     } else if (!isDueOn(habit, d)) {
       d.setDate(d.getDate() - 1);
     } else {
+      // Missed a due day — use grace if available (one per streak)
       if (!graceUsed) {
         graceUsed = true;
-        daysSinceGrace = 0;
         d.setDate(d.getDate() - 1);
         continue;
       }
       break;
-    }
-    if (daysSinceGrace >= 7) {
-      graceUsed = false;
-      daysSinceGrace = 0;
     }
   }
   return { count: streak, graceActive: graceUsed };
@@ -1519,7 +1515,7 @@ function populateAfterHabitDropdown(excludeId) {
   sel.innerHTML = '<option value="">None (standalone)</option>';
   for (const h of habits) {
     if (h.id === excludeId) continue;
-    sel.innerHTML += `<option value="${h.id}">${h.emoji} ${h.name}</option>`;
+    sel.innerHTML += `<option value="${h.id}">${esc(h.emoji)} ${esc(h.name)}</option>`;
   }
 }
 
@@ -1650,8 +1646,8 @@ function renderGarden() {
     const connectorHtml = hasFollower ? '<div class="stack-connector"></div>' : '';
     const stackLabel = isFollower ? `<div class="stack-label">after ${habits.find(h => h.id === habit.afterHabit)?.emoji || ''}</div>` : '';
 
-    html += `<div class="plant-pot ${done ? 'completed' : ''} ${isWilted ? 'wilted' : ''} ${isPaused ? 'paused' : ''} ${graceClass}"
-      onclick="${isPaused ? `showDetail('${habit.id}')` : `toggleHabitToday('${habit.id}')`}" ondblclick="showDetail('${habit.id}')">
+    html += `<div class="plant-pot ${done && !isPaused ? 'completed' : ''} ${isWilted ? 'wilted' : ''} ${isPaused ? 'paused' : ''} ${graceClass}"
+      onclick="${isPaused ? `showDetail(event,'${habit.id}')` : `toggleHabitToday(event,'${habit.id}')`}" ondblclick="showDetail(event,'${habit.id}')">
       <div class="plant-visual">${ph}</div>
       <div class="plant-name">${habit.name}</div>
       ${stackLabel}
@@ -1672,7 +1668,7 @@ function renderGarden() {
 
 let activeQuickEntry = null;
 
-function toggleHabitToday(id) {
+function toggleHabitToday(evt, id) {
   const habit = habits.find(h => h.id === id);
   if (!habit) return;
   const type = habit.completionType || 'binary';
@@ -1686,7 +1682,7 @@ function toggleHabitToday(id) {
 
   if (activeQuickEntry) { activeQuickEntry.remove(); activeQuickEntry = null; }
 
-  const pot = event.currentTarget;
+  const pot = evt.currentTarget;
   const popover = document.createElement('div');
   popover.className = 'quick-entry';
   popover.onclick = (e) => e.stopPropagation();
@@ -1901,7 +1897,7 @@ function computeInsights() {
       const pBGivenNotA = aNotDoneCount > 0 ? Math.round((aNotDoneAndBDone / aNotDoneCount) * 100) : 0;
       const diff = pBGivenA - pBGivenNotA;
       if (diff > 20) {
-        insights.push({ type: 'correlation', text: `On days you do <strong>${a.emoji} ${a.name}</strong>, you're <strong>${pBGivenA}%</strong> more likely to complete <strong>${b.emoji} ${b.name}</strong>`, score: diff });
+        insights.push({ type: 'correlation', text: `On days you do <strong>${esc(a.emoji)} ${esc(a.name)}</strong>, you're <strong>${pBGivenA}%</strong> more likely to complete <strong>${esc(b.emoji)} ${esc(b.name)}</strong>`, score: diff });
       }
     }
   }
@@ -2036,8 +2032,8 @@ function renderDashboard() {
 }
 
 // ===== DETAIL =====
-function showDetail(id) {
-  event.stopPropagation();
+function showDetail(evt, id) {
+  if (evt) evt.stopPropagation();
   const h = habits.find(x => x.id === id);
   if (!h) return;
   const s = getStreak(id).count, l = getLongestStreak(id), t = getTotalCompletions(id), r = getCompletionRate(id);
@@ -2213,7 +2209,7 @@ function importData(event) {
   reader.onload = (e) => {
     try {
       const data = JSON.parse(e.target.result);
-      if (!data.version || !data.habits) { alert('Invalid backup file.'); return; }
+      if (!data.version || !Array.isArray(data.habits)) { alert('Invalid backup file.'); return; }
       if (!confirm('This will replace all current data. Continue?')) return;
       habits = data.habits;
       completions = data.completions || {};
@@ -2330,8 +2326,8 @@ function renderReviews() {
         <div class="review-stat-mini"><div class="val">${r.stats.pct}%</div><div class="lbl">Completion</div></div>
         <div class="review-stat-mini"><div class="val">${r.stats.totalDone}/${r.stats.totalDue}</div><div class="lbl">Check-ins</div></div>
       </div>
-      ${r.wentWell ? `<div class="review-note"><h4>What went well</h4><p>${r.wentWell}</p></div>` : ''}
-      ${r.gotInWay ? `<div class="review-note"><h4>What got in the way</h4><p>${r.gotInWay}</p></div>` : ''}
+      ${r.wentWell ? `<div class="review-note"><h4>What went well</h4><p>${esc(r.wentWell)}</p></div>` : ''}
+      ${r.gotInWay ? `<div class="review-note"><h4>What got in the way</h4><p>${esc(r.gotInWay)}</p></div>` : ''}
     </div>`;
   }
   document.getElementById('reviewsList').innerHTML = html;
@@ -2408,7 +2404,17 @@ function formatDate(d) {
   return `${days[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
 }
 
-function renderAll() { renderGarden(); renderWeekly(); renderMonthly(); renderYear(); renderDashboard(); renderReviews(); renderSidebarCategories(); }
+function renderAll() {
+  const active = document.querySelector('.view.active')?.id;
+  if (active === 'gardenView') renderGarden();
+  else if (active === 'weeklyView') renderWeekly();
+  else if (active === 'monthlyView') renderMonthly();
+  else if (active === 'yearView') renderYear();
+  else if (active === 'dashboardView') renderDashboard();
+  else if (active === 'reviewsView') renderReviews();
+  else renderGarden();
+  renderSidebarCategories();
+}
 
 // ===== SHARE CARD =====
 function generateShareCard() {
