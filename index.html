@@ -881,6 +881,17 @@ select.form-input {
 .data-btn:hover { background: var(--bg-secondary); color: var(--text-primary); }
 .data-btn.danger:hover { color: var(--accent-coral); }
 
+/* ===== HABIT SCORE ===== */
+.habit-score {
+  font-family: var(--font-display); font-size: 10px;
+  color: var(--accent-warm); font-weight: 600; margin-top: 2px;
+}
+.score-big {
+  font-family: var(--font-display); font-size: 32px; font-weight: 700;
+  color: var(--accent-warm); text-align: center; margin: 10px 0 4px;
+}
+.score-label { text-align: center; font-size: 10px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; }
+
 /* ===== REVIEWS ===== */
 .review-card {
   background: var(--bg-card); border: 1px solid var(--border);
@@ -1417,6 +1428,13 @@ function getCompletionPercent(id, ds) {
   return Math.min(100, Math.round((getCompletionValue(id, ds) / habit.target) * 100));
 }
 
+function getHabitScore(id) {
+  const total = getTotalCompletions(id);
+  const longest = getLongestStreak(id);
+  const rate = getCompletionRate(id);
+  return (total * 10) + (longest * 5) + (rate * 2);
+}
+
 function toggleTargetInput() {
   const type = document.getElementById('habitCompletionType').value;
   const group = document.getElementById('targetGroup');
@@ -1611,6 +1629,7 @@ function renderGarden() {
     const graceClass = graceActive ? 'grace' : '';
     const graceBadge = graceActive ? '<div class="grace-badge">1 skip used</div>' : '';
 
+    const score = getHabitScore(habit.id);
     const nextInStack = orderedHabits[idx + 1];
     const hasFollower = nextInStack && nextInStack.afterHabit === habit.id;
     const isFollower = habit.afterHabit;
@@ -1628,6 +1647,7 @@ function renderGarden() {
       ${completionDisplay}
       ${time ? `<div class="plant-time">${time}</div>` : ''}
       <div class="plant-category" style="color:${CAT_COLORS[habit.category] || CAT_COLORS.custom}">${habit.category}</div>
+      <div class="habit-score">${score} pts</div>
       ${connectorHtml}
     </div>`;
   }
@@ -1901,6 +1921,19 @@ function renderDashboard() {
   }
   html += '</div></div>';
 
+  // Habit Scores Leaderboard
+  html += '<div class="dash-card"><h3>🏆 Habit Scores</h3><div class="streak-list">';
+  const byScore = [...habits].sort((a, b) => getHabitScore(b.id) - getHabitScore(a.id));
+  for (const h of byScore) {
+    const sc = getHabitScore(h.id);
+    const maxScore = Math.max(...habits.map(x => getHabitScore(x.id)));
+    const pct = maxScore > 0 ? Math.round((sc / maxScore) * 100) : 0;
+    html += `<div class="streak-item"><span class="streak-emoji">${h.emoji}</span>
+      <div class="streak-info"><div class="name">${h.name}</div><div class="days">${sc} points</div></div>
+      <div class="streak-bar"><div class="streak-bar-fill" style="width:${pct}%;background:var(--accent-warm)"></div></div></div>`;
+  }
+  html += '</div></div>';
+
   document.getElementById('dashboardGrid').innerHTML = html;
 }
 
@@ -1913,6 +1946,7 @@ function showDetail(id) {
   const freq = h.frequency === 'daily' ? 'Every day' : h.frequency === 'weekdays' ? 'Weekdays' : 'Custom';
   const time = h.timeOfDay && h.timeOfDay !== 'anytime' ? h.timeOfDay : 'Any time';
 
+  const score = getHabitScore(id);
   document.getElementById('detailBody').innerHTML = `
     <div class="detail-header">
       <div class="detail-emoji">${h.emoji}</div>
@@ -1928,6 +1962,7 @@ function showDetail(id) {
       <div class="detail-stat"><div class="detail-stat-value">${h.goal || 30}</div><div class="detail-stat-label">Goal</div></div>
       <div class="detail-stat"><div class="detail-stat-value">${Math.min(100, Math.round((s / (h.goal || 30)) * 100))}%</div><div class="detail-stat-label">Progress</div></div>
     </div>
+    <div class="score-big">${score}</div><div class="score-label">Habit Score</div>
     <div class="detail-actions">
       <button class="btn" onclick="editHabit('${id}')">Edit</button>
       <button class="btn btn-danger" onclick="deleteHabit('${id}')">Delete</button>
