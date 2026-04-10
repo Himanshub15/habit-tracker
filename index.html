@@ -1598,10 +1598,11 @@ function renderGarden() {
   }
 
   // Stats
-  const allStreaks = habits.map(h => getStreak(h.id).count);
+  const activeForStats = habits.filter(h => !h.paused);
+  const allStreaks = activeForStats.map(h => getStreak(h.id).count);
   const bestStreak = allStreaks.length ? Math.max(...allStreaks) : 0;
-  const avgRate = habits.length ? Math.round(habits.reduce((s, h) => s + getCompletionRate(h.id), 0) / habits.length) : 0;
-  const totalAll = habits.reduce((s, h) => s + getTotalCompletions(h.id), 0);
+  const avgRate = activeForStats.length ? Math.round(activeForStats.reduce((s, h) => s + getCompletionRate(h.id), 0) / activeForStats.length) : 0;
+  const totalAll = activeForStats.reduce((s, h) => s + getTotalCompletions(h.id), 0);
 
   document.getElementById('statsBar').innerHTML = `
     <div class="stat-card"><div class="stat-label">Active Habits</div><div class="stat-value">${habits.length}</div><div class="stat-sub">${dueHabits.length} due today</div></div>
@@ -1954,10 +1955,11 @@ function renderDashboard() {
     return;
   }
 
-  const totalH = habits.length;
-  const totalC = habits.reduce((s, h) => s + getTotalCompletions(h.id), 0);
-  const bestS = Math.max(...habits.map(h => getLongestStreak(h.id)));
-  const avgR = Math.round(habits.reduce((s, h) => s + getCompletionRate(h.id), 0) / totalH);
+  const dashActive = habits.filter(h => !h.paused);
+  const totalH = dashActive.length;
+  const totalC = dashActive.reduce((s, h) => s + getTotalCompletions(h.id), 0);
+  const bestS = totalH ? Math.max(...dashActive.map(h => getLongestStreak(h.id))) : 0;
+  const avgR = totalH ? Math.round(dashActive.reduce((s, h) => s + getCompletionRate(h.id), 0) / totalH) : 0;
 
   document.getElementById('dashStats').innerHTML = `
     <div class="stat-card"><div class="stat-label">Total Habits</div><div class="stat-value">${totalH}</div></div>
@@ -1969,7 +1971,7 @@ function renderDashboard() {
 
   // Top Streaks
   html += '<div class="dash-card"><h3>🔥 Active Streaks</h3><div class="streak-list">';
-  const sorted = [...habits].sort((a, b) => getStreak(b.id).count - getStreak(a.id).count);
+  const sorted = [...dashActive].sort((a, b) => getStreak(b.id).count - getStreak(a.id).count);
   for (const h of sorted) {
     const s = getStreak(h.id).count;
     const pct = Math.min(100, Math.round((s / (h.goal || 30)) * 100));
@@ -1981,7 +1983,7 @@ function renderDashboard() {
 
   // Completion Rates
   html += '<div class="dash-card"><h3>📊 Completion Rates</h3><div class="streak-list">';
-  const byRate = [...habits].sort((a, b) => getCompletionRate(b.id) - getCompletionRate(a.id));
+  const byRate = [...dashActive].sort((a, b) => getCompletionRate(b.id) - getCompletionRate(a.id));
   for (const h of byRate) {
     const r = getCompletionRate(h.id);
     html += `<div class="streak-item"><span class="streak-emoji">${h.emoji}</span>
@@ -1993,7 +1995,7 @@ function renderDashboard() {
   // Categories
   html += '<div class="dash-card full-width"><h3>📂 Categories</h3><div class="category-chart">';
   const cats = {};
-  for (const h of habits) {
+  for (const h of dashActive) {
     if (!cats[h.category]) cats[h.category] = { total: 0, count: 0 };
     cats[h.category].total += getCompletionRate(h.id);
     cats[h.category].count++;
