@@ -881,6 +881,18 @@ select.form-input {
 .data-btn:hover { background: var(--bg-secondary); color: var(--text-primary); }
 .data-btn.danger:hover { color: var(--accent-coral); }
 
+/* ===== INSIGHTS ===== */
+.insight-item {
+  padding: 12px 14px; background: var(--bg-secondary);
+  border-radius: 9px; margin-bottom: 8px;
+  font-size: 13px; line-height: 1.5;
+}
+.insight-item strong { color: var(--accent-glow); }
+.insight-item .insight-label {
+  font-size: 9px; color: var(--text-muted); text-transform: uppercase;
+  letter-spacing: 1px; margin-bottom: 4px; display: block;
+}
+
 /* ===== HABIT SCORE ===== */
 .habit-score {
   font-family: var(--font-display); font-size: 10px;
@@ -1860,6 +1872,79 @@ function renderYear() {
   document.getElementById('yearWrap').innerHTML = html;
 }
 
+// ===== INSIGHTS =====
+function computeInsights() {
+  const insights = [];
+  const activeHabits = habits.filter(h => !h.paused);
+  const dates = Object.keys(completions);
+
+  // Cross-habit correlations
+  for (let i = 0; i < activeHabits.length; i++) {
+    for (let j = i + 1; j < activeHabits.length; j++) {
+      const a = activeHabits[i], b = activeHabits[j];
+      let bothDue = 0, aDoneAndBDone = 0, aNotDoneAndBDone = 0, aDoneCount = 0;
+      for (const ds of dates) {
+        const d = new Date(ds);
+        if (!isDueOn(a, d) || !isDueOn(b, d)) continue;
+        bothDue++;
+        const aDone = isCompleted(a.id, ds);
+        const bDone = isCompleted(b.id, ds);
+        if (aDone) aDoneCount++;
+        if (aDone && bDone) aDoneAndBDone++;
+        if (!aDone && bDone) aNotDoneAndBDone++;
+      }
+      if (bothDue < 14) continue;
+      const aNotDoneCount = bothDue - aDoneCount;
+      const pBGivenA = aDoneCount > 0 ? Math.round((aDoneAndBDone / aDoneCount) * 100) : 0;
+      const pBGivenNotA = aNotDoneCount > 0 ? Math.round((aNotDoneAndBDone / aNotDoneCount) * 100) : 0;
+      const diff = pBGivenA - pBGivenNotA;
+      if (diff > 20) {
+        insights.push({ type: 'correlation', text: `On days you do <strong>${a.emoji} ${a.name}</strong>, you're <strong>${pBGivenA}%</strong> more likely to complete <strong>${b.emoji} ${b.name}</strong>`, score: diff });
+      }
+    }
+  }
+
+  // Best day of week
+  const dayTotals = [0,0,0,0,0,0,0], dayCounts = [0,0,0,0,0,0,0];
+  const dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  for (const ds of dates) {
+    const d = new Date(ds);
+    const dow = d.getDay();
+    for (const h of activeHabits) {
+      if (isDueOn(h, d)) { dayCounts[dow]++; if (isCompleted(h.id, ds)) dayTotals[dow]++; }
+    }
+  }
+  let bestDay = 0, bestDayRate = 0;
+  for (let i = 0; i < 7; i++) {
+    const rate = dayCounts[i] > 0 ? Math.round((dayTotals[i] / dayCounts[i]) * 100) : 0;
+    if (rate > bestDayRate) { bestDay = i; bestDayRate = rate; }
+  }
+  if (bestDayRate > 0) {
+    insights.push({ type: 'bestday', text: `Your most productive day is <strong>${dayNames[bestDay]}</strong> with <strong>${bestDayRate}%</strong> completion rate`, score: 0 });
+  }
+
+  // Best time of day
+  const timeTotals = {}, timeCounts = {};
+  for (const h of activeHabits) {
+    const t = h.timeOfDay || 'anytime';
+    if (!timeTotals[t]) { timeTotals[t] = 0; timeCounts[t] = 0; }
+    timeTotals[t] += getCompletionRate(h.id);
+    timeCounts[t]++;
+  }
+  let bestTime = '', bestTimeRate = 0;
+  for (const t in timeTotals) {
+    if (t === 'anytime') continue;
+    const avg = Math.round(timeTotals[t] / timeCounts[t]);
+    if (avg > bestTimeRate) { bestTime = t; bestTimeRate = avg; }
+  }
+  if (bestTime && bestTimeRate > 0) {
+    insights.push({ type: 'besttime', text: `Your <strong>${bestTime}</strong> habits have the highest consistency at <strong>${bestTimeRate}%</strong>`, score: 0 });
+  }
+
+  insights.sort((a, b) => b.score - a.score);
+  return insights.slice(0, 5);
+}
+
 // ===== DASHBOARD =====
 function renderDashboard() {
   if (!habits.length) {
@@ -1933,6 +2018,16 @@ function renderDashboard() {
       <div class="streak-bar"><div class="streak-bar-fill" style="width:${pct}%;background:var(--accent-warm)"></div></div></div>`;
   }
   html += '</div></div>';
+
+  // Insights
+  const insights = computeInsights();
+  if (insights.length > 0) {
+    html += '<div class="dash-card full-width"><h3>💡 Insights</h3>';
+    for (const ins of insights) {
+      html += `<div class="insight-item">${ins.text}</div>`;
+    }
+    html += '</div>';
+  }
 
   document.getElementById('dashboardGrid').innerHTML = html;
 }
