@@ -811,6 +811,38 @@ select.form-input {
 
 .view { display: none; }
 .view.active { display: block; }
+
+/* ===== QUICK ENTRY POPOVER ===== */
+.quick-entry {
+  position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+  background: var(--bg-modal); border: 1px solid var(--border);
+  border-radius: 12px; padding: 12px; z-index: 50;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3); min-width: 160px;
+  animation: modalSlide 0.2s ease;
+}
+.quick-entry-row { display: flex; gap: 6px; align-items: center; }
+.quick-entry input {
+  width: 80px; padding: 6px 10px; border-radius: 7px;
+  border: 1px solid var(--border); background: var(--bg-input);
+  color: var(--text-primary); font-size: 14px; font-family: var(--font-body);
+  text-align: center; outline: none;
+}
+.quick-entry input:focus { border-color: var(--accent-glow); }
+.quick-entry-label { font-size: 11px; color: var(--text-muted); margin-bottom: 6px; }
+.quick-entry-confirm {
+  padding: 6px 12px; border-radius: 7px; border: none; cursor: pointer;
+  background: var(--accent-glow); color: #0a0e0a; font-weight: 700; font-size: 13px;
+}
+.completion-type-badge {
+  font-size: 9px; color: var(--text-muted); margin-top: 2px;
+  font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;
+}
+.rating-input { display: flex; gap: 4px; justify-content: center; }
+.rating-star {
+  font-size: 20px; cursor: pointer; opacity: 0.3; transition: opacity 0.1s;
+}
+.rating-star.active { opacity: 1; }
+.rating-star:hover { opacity: 0.7; }
 </style>
 </head>
 
@@ -972,6 +1004,21 @@ select.form-input {
             <option value="afternoon">Afternoon</option>
             <option value="evening">Evening</option>
           </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Completion Type</label>
+          <select class="form-input" id="habitCompletionType" onchange="toggleTargetInput()">
+            <option value="binary">Done / Not Done</option>
+            <option value="quantity">Quantity</option>
+            <option value="duration">Duration (min)</option>
+            <option value="rating">Rating (1-5)</option>
+          </select>
+        </div>
+        <div class="form-group" id="targetGroup" style="display:none">
+          <label class="form-label" id="targetLabel">Target</label>
+          <input type="number" class="form-input" id="habitTarget" placeholder="e.g., 8" min="1">
         </div>
       </div>
       <div class="form-group">
@@ -1152,7 +1199,13 @@ function isDueOn(habit, date) {
   return true;
 }
 
-function isCompleted(id, ds) { return completions[ds] && completions[ds][id]; }
+function isCompleted(id, ds) {
+  const c = completions[ds] && completions[ds][id];
+  if (!c) return false;
+  if (c === true) return true;
+  if (typeof c === 'object' && c.value !== undefined) return c.value > 0;
+  return false;
+}
 
 function toggleCompletion(id, ds) {
   if (!completions[ds]) completions[ds] = {};
@@ -1207,8 +1260,45 @@ function getCompletionRate(id) {
   return due === 0 ? 0 : Math.round((done / due) * 100);
 }
 
+function getCompletionValue(id, ds) {
+  const c = completions[ds] && completions[ds][id];
+  if (!c) return 0;
+  if (c === true) return 1;
+  if (typeof c === 'object' && c.value !== undefined) return c.value;
+  return 1;
+}
+
+function getCompletionPercent(id, ds) {
+  const habit = habits.find(h => h.id === id);
+  if (!habit || !habit.target) return isCompleted(id, ds) ? 100 : 0;
+  return Math.min(100, Math.round((getCompletionValue(id, ds) / habit.target) * 100));
+}
+
+function toggleTargetInput() {
+  const type = document.getElementById('habitCompletionType').value;
+  const group = document.getElementById('targetGroup');
+  const label = document.getElementById('targetLabel');
+  if (type === 'binary' || type === 'rating') { group.style.display = 'none'; return; }
+  group.style.display = 'block';
+  label.textContent = type === 'duration' ? 'Target (minutes)' : 'Target Amount';
+}
+
 // ===== PLANT RENDERING =====
-function getGrowthStage(streak) {
+function getGrowthStage(streak, habit, ds) {
+  const type = habit?.completionType || 'binary';
+  if (type !== 'binary' && ds) {
+    const pct = getCompletionPercent(habit.id, ds);
+    if (pct === 0) return getGrowthStageByStreak(streak);
+    if (pct <= 25) return 1;
+    if (pct <= 50) return 2;
+    if (pct <= 75) return 3;
+    if (pct < 100) return 4;
+    return 5;
+  }
+  return getGrowthStageByStreak(streak);
+}
+
+function getGrowthStageByStreak(streak) {
   if (streak === 0) return 0;
   if (streak <= 2) return 1;
   if (streak <= 6) return 2;
@@ -1217,8 +1307,8 @@ function getGrowthStage(streak) {
   return 5;
 }
 
-function renderPlant(habit, streak) {
-  const stage = getGrowthStage(streak);
+function renderPlant(habit, streak, ds) {
+  const stage = getGrowthStage(streak, habit, ds);
   const isWilted = streak === 0 && getTotalCompletions(habit.id) > 0;
   const color = habit.color || COLORS[0];
   const stemH = [0, 10, 24, 40, 52, 64][stage];
@@ -1304,17 +1394,26 @@ function renderGarden() {
 
   let html = '';
   for (const habit of habits) {
-    const streak = getStreak(habit.id);
+    const streakData = getStreak(habit.id);
+    const streak = streakData.count !== undefined ? streakData.count : streakData;
     const done = isCompleted(habit.id, ds);
     const due = isDueOn(habit, new Date());
-    const { html: ph, isWilted } = renderPlant(habit, streak);
+    const { html: ph, isWilted } = renderPlant(habit, streak, ds);
     const time = habit.timeOfDay && habit.timeOfDay !== 'anytime' ? habit.timeOfDay : '';
+    const cType = habit.completionType || 'binary';
+    const cValue = getCompletionValue(habit.id, ds);
+    const cTarget = habit.target;
+    let completionDisplay = '';
+    if (cType === 'quantity' && cValue > 0) completionDisplay = `<div class="completion-type-badge">${cValue}${cTarget ? ' / ' + cTarget : ''}</div>`;
+    else if (cType === 'duration' && cValue > 0) completionDisplay = `<div class="completion-type-badge">${cValue} min${cTarget ? ' / ' + cTarget : ''}</div>`;
+    else if (cType === 'rating' && cValue > 0) completionDisplay = `<div class="completion-type-badge">${'★'.repeat(cValue)}${'☆'.repeat(5 - cValue)}</div>`;
 
     html += `<div class="plant-pot ${done ? 'completed' : ''} ${isWilted ? 'wilted' : ''}"
       onclick="toggleHabitToday('${habit.id}')" ondblclick="showDetail('${habit.id}')">
       <div class="plant-visual">${ph}</div>
       <div class="plant-name">${habit.name}</div>
       <div class="plant-streak">${streak > 0 ? `<strong>${streak}</strong> day streak` : due ? 'Tap to water' : 'Rest day'}</div>
+      ${completionDisplay}
       ${time ? `<div class="plant-time">${time}</div>` : ''}
       <div class="plant-category" style="color:${CAT_COLORS[habit.category] || CAT_COLORS.custom}">${habit.category}</div>
     </div>`;
@@ -1324,7 +1423,73 @@ function renderGarden() {
   grid.innerHTML = html;
 }
 
-function toggleHabitToday(id) { toggleCompletion(id, today()); renderGarden(); }
+let activeQuickEntry = null;
+
+function toggleHabitToday(id) {
+  const habit = habits.find(h => h.id === id);
+  if (!habit) return;
+  const type = habit.completionType || 'binary';
+
+  if (type === 'binary') {
+    toggleCompletion(id, today());
+    renderGarden();
+    return;
+  }
+
+  if (activeQuickEntry) { activeQuickEntry.remove(); activeQuickEntry = null; }
+
+  const pot = event.currentTarget;
+  const popover = document.createElement('div');
+  popover.className = 'quick-entry';
+  popover.onclick = (e) => e.stopPropagation();
+
+  if (type === 'rating') {
+    const current = getCompletionValue(id, today());
+    popover.innerHTML = `
+      <div class="quick-entry-label">Rate today</div>
+      <div class="rating-input">
+        ${[1,2,3,4,5].map(n => `<span class="rating-star ${n <= current ? 'active' : ''}"
+          onclick="submitQuickEntry('${id}',${n})">${n <= current ? '★' : '☆'}</span>`).join('')}
+      </div>`;
+  } else {
+    const unit = type === 'duration' ? 'min' : (habit.target ? '/ ' + habit.target : '');
+    const current = getCompletionValue(id, today());
+    popover.innerHTML = `
+      <div class="quick-entry-label">${type === 'duration' ? 'Minutes' : 'Amount'} ${unit}</div>
+      <div class="quick-entry-row">
+        <input type="number" id="quickEntryInput" value="${current || ''}" min="0" placeholder="0"
+          onkeydown="if(event.key==='Enter')submitQuickEntry('${id}')">
+        <button class="quick-entry-confirm" onclick="submitQuickEntry('${id}')">✓</button>
+      </div>`;
+  }
+
+  pot.style.position = 'relative';
+  pot.appendChild(popover);
+  activeQuickEntry = popover;
+  const inp = popover.querySelector('input');
+  if (inp) setTimeout(() => inp.focus(), 50);
+}
+
+function submitQuickEntry(id, ratingValue) {
+  const ds = today();
+  if (ratingValue !== undefined) {
+    if (!completions[ds]) completions[ds] = {};
+    completions[ds][id] = { value: ratingValue };
+  } else {
+    const inp = document.getElementById('quickEntryInput');
+    const val = parseFloat(inp?.value) || 0;
+    if (!completions[ds]) completions[ds] = {};
+    if (val > 0) completions[ds][id] = { value: val };
+    else if (completions[ds][id]) delete completions[ds][id];
+  }
+  save();
+  if (activeQuickEntry) { activeQuickEntry.remove(); activeQuickEntry = null; }
+  renderGarden();
+}
+
+document.addEventListener('click', () => {
+  if (activeQuickEntry) { activeQuickEntry.remove(); activeQuickEntry = null; }
+});
 
 // ===== WEEKLY =====
 function renderWeekly() {
@@ -1582,6 +1747,9 @@ function editHabit(id) {
   if (h.frequency === 'custom' && h.customDays) {
     document.querySelectorAll('#daysPicker .day-btn').forEach(el => el.classList.toggle('selected', h.customDays.includes(parseInt(el.dataset.day))));
   }
+  document.getElementById('habitCompletionType').value = h.completionType || 'binary';
+  document.getElementById('habitTarget').value = h.target || '';
+  toggleTargetInput();
   document.getElementById('createModal').classList.add('show');
 }
 
@@ -1600,6 +1768,9 @@ function openCreateModal() {
   document.querySelectorAll('.color-option').forEach((el, i) => el.classList.toggle('selected', i === 0));
   document.querySelectorAll('#daysPicker .day-btn').forEach(el => el.classList.remove('selected'));
   toggleDaysPicker();
+  document.getElementById('habitCompletionType').value = 'binary';
+  document.getElementById('habitTarget').value = '';
+  toggleTargetInput();
   document.getElementById('createModal').classList.add('show');
   setTimeout(() => document.getElementById('habitName').focus(), 150);
 }
@@ -1621,6 +1792,10 @@ function saveHabit() {
   const frequency = document.getElementById('habitFrequency').value;
   const goal = parseInt(document.getElementById('habitGoal').value) || 30;
   const duration = parseInt(document.getElementById('habitDuration').value) || null;
+  const completionType = document.getElementById('habitCompletionType').value;
+  const target = (completionType === 'quantity' || completionType === 'duration')
+    ? (parseInt(document.getElementById('habitTarget').value) || null)
+    : (completionType === 'rating' ? 5 : null);
   let customDays = null;
   if (frequency === 'custom') {
     customDays = [];
@@ -1629,9 +1804,9 @@ function saveHabit() {
   }
   if (editingHabitId) {
     const h = habits.find(x => x.id === editingHabitId);
-    if (h) Object.assign(h, { name, emoji, color, category, timeOfDay, frequency, customDays, goal, duration });
+    if (h) Object.assign(h, { name, emoji, color, category, timeOfDay, frequency, customDays, goal, duration, completionType, target });
   } else {
-    habits.push({ id: genId(), name, emoji, color, category, timeOfDay, frequency, customDays, goal, duration, created: today() });
+    habits.push({ id: genId(), name, emoji, color, category, timeOfDay, frequency, customDays, goal, duration, completionType, target, created: today() });
   }
   save(); closeModal('createModal'); renderAll();
 }
